@@ -1,3 +1,5 @@
+import * as xml2js from "xml2js";
+
 import {
 	App,
 	Editor,
@@ -7,16 +9,25 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	requestUrl,
 } from "obsidian";
 
 // Remember to rename these classes and interfaces!
 
 interface FeedMdSettings {
 	mySetting: string;
+	sources: Source[];
+}
+
+interface Source {
+	name: string;
+	url: string;
+	feedUrl: string;
 }
 
 const DEFAULT_SETTINGS: FeedMdSettings = {
 	mySetting: "default",
+	sources: [],
 };
 
 export default class FeedMd extends Plugin {
@@ -26,6 +37,7 @@ export default class FeedMd extends Plugin {
 		console.log("loading plugin");
 
 		await this.loadSettings();
+		await this.fetchFeeds();
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon(
@@ -112,6 +124,41 @@ export default class FeedMd extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+	// Fetch URLs in sources.json
+	async fetchFeeds() {
+		console.log("Fetching feeds");
+
+		// Load sources from settings
+		const sources = this.settings.sources;
+
+		await Promise.all(
+			sources.map(async (source) => {
+				try {
+					const response = await requestUrl({
+						url: source.feedUrl,
+						method: "GET",
+					});
+
+					const parsedData = await xml2js.parseStringPromise(
+						response.text
+					);
+
+					const items = parsedData.rss.channel[0].item;
+
+					items.forEach((item) => {
+						console.log(item.title[0], item.title);
+					});
+				} catch (error) {
+					console.error(
+						"Failed to fetch source",
+						source.feedUrl,
+						error
+					);
+				}
+			})
+		);
+	}
 }
 
 class SampleModal extends Modal {
@@ -155,5 +202,14 @@ class SampleSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName("RSS Feed Sources")
+			.setDesc("Manage your RSS feed sources")
+			.addButton((button) => {
+				button.setButtonText("Add new source").onClick(async () => {
+					// Logic to add a new source, perhaps opening a modal for input
+				});
+			});
 	}
 }
